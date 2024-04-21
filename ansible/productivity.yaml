@@ -1,0 +1,76 @@
+- hosts: all
+  become: true
+  gather_facts: yes
+
+  tasks:
+    - name: Add kdenlive PPA (Debian/Ubuntu)
+      apt_repository:
+        repo: ppa:kdenlive/kdenlive-stable
+        state: present
+        update_cache: true
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - productivity
+
+    - name: Add shutter PPA (Debian/Ubuntu)
+      apt_repository:
+        repo: ppa:linuxuprising/shutter
+        state: present
+        update_cache: true
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - productivity
+
+    - name: Install common productivity packages (Debian/Ubuntu)
+      apt:
+        name: ["tmux", "wireshark", "fzf", "kdenlive", "gimp", "xclip", "screenkey", "tldr", "ripgrep", "shutter"]
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - productivity
+
+    - name: Install common productivity packages (RHEL/CentOS)
+      yum:
+        name: ["tmux", "wireshark", "fzf", "gimp", "xclip", "tldr", "ripgrep"]
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
+      tags:
+        - install
+        - productivity
+
+    - name: Install common productivity packages (Arch Linux)
+      pacman:
+        name: ["tmux", "wireshark-gtk", "fzf", "gimp", "xclip", "tldr", "ripgrep"]
+        state: present
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - install
+        - productivity
+
+    # Example of a task to install a package from the AUR manually if necessary
+    - name: Install AUR packages (Arch Linux)
+      shell: yay -S kdenlive shutter
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - install
+        - productivity
+    - name: Download Kdenlive installer for Windows
+      win_get_url:
+        url: "https://download.kde.org/stable/kdenlive/{{ kdenlive_version }}/kdenlive-{{ kdenlive_version }}-x64.exe"
+        dest: "C:\\Users\\Public\\Downloads\\kdenlive-installer.exe"
+      when: ansible_facts['os_family'] == "Windows"
+      vars:
+        kdenlive_version: "22.08.3"  # Update this to the latest version as needed
+      tags:
+        - install
+        - productivity
+
+    - name: Install Kdenlive on Windows
+      win_command: "C:\\Users\\Public\\Downloads\\kdenlive-installer.exe /S"
+      when: ansible_facts['os_family'] == "Windows"
+      tags:
+        - install
+        - productivity
+

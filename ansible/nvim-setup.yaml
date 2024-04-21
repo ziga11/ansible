@@ -1,0 +1,53 @@
+- hosts: all
+  become: true
+  gather_facts: yes
+
+  tasks:
+    - name: Remove existing neovim directory
+      file:
+        path: "{{ lookup('env', 'HOME') }}/neovim"
+        state: absent
+      tags:
+        - install
+        - neovim
+
+    - name: Get Packer for Neovim
+      ansible.builtin.git:
+        repo: 'https://github.com/wbthomason/packer.nvim'
+        dest: "{{ lookup('env', 'HOME') }}/.local/share/nvim/site/pack/packer/start/packer.nvim"
+      tags:
+        - install
+        - neovim
+
+    - name: Clone Neovim repository
+      ansible.builtin.git:
+        repo: 'https://github.com/neovim/neovim.git'
+        dest: "{{ lookup('env', 'HOME') }}/neovim"
+      tags:
+        - install
+        - neovim
+
+    - name: Install development tools (Debian/Ubuntu)
+      apt:
+        name: ["build-essential", "cmake", "pkg-config", "git", "luarocks"]
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - neovim
+
+    - name: Install development tools (RHEL/CentOS)
+      yum:
+        name: ["@development", "cmake", "pkgconfig", "git", "luarocks"]
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
+      tags:
+        - install
+        - neovim
+
+    - name: Install development tools (Arch Linux)
+      pacman:
+        name: ["base-devel", "cmake", "pkgconf", "git", "luarocks"]
+        state: present
+      when: ansible_facts['distribution'] == "Archlinux"
+

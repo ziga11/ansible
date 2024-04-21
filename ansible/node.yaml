@@ -1,0 +1,60 @@
+- hosts: all
+  become: true
+  gather_facts: yes
+
+  tasks:
+    - name: Install Node.js on Linux
+      package:
+        name: nodejs
+        state: present
+      tags:
+      - node
+      when: ansible_facts['os_family'] != "Windows"
+
+    - name: Install n (Node version manager)
+      npm:
+        name: n
+        global: true
+      tags:
+      - node
+      when: ansible_facts['os_family'] != "Windows"
+
+    - name: Ensure Node.js and npm are in PATH on Linux
+      lineinfile:
+        path: /etc/environment
+        state: present
+        create: yes
+        line: 'PATH="/usr/local/bin:/usr/bin:{{ ansible_env.PATH }}"'
+        regexp: '^PATH='
+      when: ansible_facts['os_family'] != "Windows"
+      tags:
+      - node
+
+    - name: Install Node.js on Windows
+      win_chocolatey:
+        name: nodejs
+        state: present
+      tags:
+      - node
+      when: ansible_facts['os_family'] == "Windows"
+
+    - name: Install WSL and Ubuntu for Windows
+      win_shell: |
+        wsl --install -d Ubuntu
+      when: ansible_facts['os_family'] == "Windows"
+
+    - name: Install Zsh and OhMyZsh in WSL
+      win_shell: |
+        wsl --distribution Ubuntu --user root --exec sh -c "apt update && apt install zsh -y && sh -c \"$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" && chsh -s `which zsh`"
+      when: ansible_facts['os_family'] == "Windows"
+
+    - name: Ensure Node.js and npm are in PATH on Windows
+      win_environment:
+        state: present
+        name: PATH
+        value: 'C:\Program Files\nodejs\;{{ ansible_env.PATH }}'
+        level: machine
+      when: ansible_facts['os_family'] == "Windows"
+      tags:
+      - node
+

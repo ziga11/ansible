@@ -1,0 +1,70 @@
+- hosts: all
+  become: true
+  gather_facts: yes
+
+  tasks:
+    # Debian-based systems
+    - name: Download Slack (Debian/Ubuntu)
+      get_url:
+        url: https://downloads.slack-edge.com/linux_releases/slack-desktop-4.19.2-amd64.deb
+        dest: /tmp/slack.deb
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - slack
+
+    - name: Remove Any previous slacks (Debian/Ubuntu)
+      apt:
+        name: slack-desktop
+        state: absent
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - slack
+
+    - name: Install Slack .deb package (Debian/Ubuntu)
+      apt:
+        deb: /tmp/slack.deb
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - slack
+
+    # Red Hat-based systems
+    - name: Download Slack (RHEL/CentOS)
+      get_url:
+        url: https://downloads.slack-edge.com/linux_releases/slack-desktop-4.19.2-x86_64.rpm
+        dest: /tmp/slack.rpm
+      when: ansible_facts['os_family'] == "RedHat"
+      tags:
+        - install
+        - slack
+
+    - name: Remove any previous Slack (RHEL/CentOS)
+      yum:
+        name: slack
+        state: absent
+      when: ansible_facts['os_family'] == "RedHat"
+      tags:
+        - install
+        - slack
+
+    - name: Install Slack RPM package (RHEL/CentOS)
+      yum:
+        name: /tmp/slack.rpm
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
+      tags:
+        - install
+        - slack
+
+    # Windows systems
+    - name: Install Slack on Windows
+      win_chocolatey:
+        name: slack
+        state: present
+      when: ansible_facts['os_family'] == "Windows"
+      tags:
+        - install
+        - slack
+

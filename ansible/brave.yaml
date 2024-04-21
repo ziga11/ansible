@@ -1,0 +1,79 @@
+- hosts: all
+  become: true
+  gather_facts: yes
+
+  tasks:
+    # Debian-based Linux Installation
+    - name: required libraries for Brave (Debian/Ubuntu)
+      apt:
+        name: ["curl", "apt-transport-https"]
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - brave
+        - install
+
+    - name: Brave Browser archive-keyring.gpg download (Debian/Ubuntu)
+      get_url:
+        url: https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+        dest: /usr/share/keyrings/brave-browser-archive-keyring.gpg
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - brave
+        - install
+
+    - name: Brave Browser PPA setting (Debian/Ubuntu)
+      shell: echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main" | tee /etc/apt/sources.list.d/brave-browser-release.list
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - brave
+        - install
+
+    - name: Brave Browser apt installation (Debian/Ubuntu)
+      apt:
+        update_cache: yes
+        name: brave-browser
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - brave
+        - install
+
+    # Red Hat-based Linux Installation
+    - name: Brave Browser installation (RHEL/CentOS)
+      block:
+        - name: Import Brave Browser RPM key
+          rpm_key:
+            state: present
+            key: https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+
+        - name: Add Brave Browser repo
+          get_url:
+            url: https://brave-browser-rpm-release.s3.brave.com/x86_64/
+            dest: /etc/yum.repos.d/brave-browser.repo
+
+        - name: Install Brave Browser
+          yum:
+            name: brave-browser
+            state: present
+      when: ansible_facts['os_family'] == "RedHat"
+      tags:
+        - brave
+        - install
+
+    # Arch-based Linux Installation
+    - name: Install Brave Browser (Arch Linux)
+      shell: yay -S brave-bin --noconfirm
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - brave
+        - install
+
+    # Windows Installation
+    - name: Install Brave Browser (Windows)
+      win_chocolatey:
+        name: brave
+        state: present
+      when: ansible_facts['os_family'] == "Windows"
+      tags:
+        - brave
+        - install
+

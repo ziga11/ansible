@@ -1,0 +1,15 @@
+- hosts: all
+  become: true
+  gather_facts: yes  # This is necessary to collect the details about the operating system
+
+  tasks:
+    - include: ansible/zsh.yaml
+    - include: ansible/nvim-setup.yaml
+    - include: ansible/node.yaml
+    - include: ansible/brave.yaml
+    - include: ansible/core.yaml
+    - include: ansible/git-setup.yaml
+    - include: ansible/node.yaml
+    - include: ansible/productivity.yaml
+    - include: ansible/slack.yaml
+    - include: ansible/zsh.yaml

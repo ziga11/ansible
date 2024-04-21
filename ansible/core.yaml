@@ -1,0 +1,117 @@
+- hosts: all
+  become: true
+  gather_facts: yes
+
+  tasks:
+    - name: Update package cache (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags:
+        - zsh 
+        - node
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Update package cache and upgrade all packages (RHEL/CentOS)
+      ansible.builtin.yum:
+        name: '*'
+        state: latest
+        update_cache: yes
+      tags:
+        - zsh 
+        - node
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Update package cache and upgrade all packages (Arch Linux)
+      ansible.builtin.pacman:
+        update_cache: yes
+        upgrade: yes
+      tags:
+        - zsh 
+        - node
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+
+    - name: Install Chocolatey on Windows
+      win_shell: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+      when: ansible_facts['os_family'] == "Windows"
+      tags:
+        - node
+      ignore_errors: yes
+
+    - name: Install WSL and Ubuntu for Windows
+      win_shell: |
+        wsl --install -d Ubuntu
+      when: ansible_facts['os_family'] == "Windows"
+
+    - name: Install System Packages 1 (Debian/Ubuntu)
+      apt:
+        name: ["build-essential", "cmake", "pkg-config", "libpthread-stubs0-dev"]
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - neovim
+        - core
+
+    - name: Install System Packages 1 (Arch Linux)
+      pacman:
+        name: ["base-devel", "cmake", "pkgconf", "pthread-stubs"]
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - install
+        - neovim
+        - core
+
+    - name: Install System Packages 2 (Debian/Ubuntu)
+      apt:
+        name: ["lua5.1", "unzip", "libtool", "libtool-bin", "gettext"]
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - neovim
+        - core
+
+    - name: Install System Packages 2 (Arch Linux)
+      pacman:
+        name: ["lua51", "unzip", "libtool", "gettext"]
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - install
+        - neovim
+        - core
+
+    - name: Install System Packages 3 (Debian/Ubuntu)
+      apt:
+        name: ["compton", "curl", "htop", "golang", "lsof", "i3", "ccache", "ninja-build", "python3-pip", "dconf-editor", "nvidia-settings", "pavucontrol", "moreutils", "clangd", "ubuntu-mate-desktop"]
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - core
+
+    - name: Install System Packages 3 (Arch Linux)
+      pacman:
+        name: ["picom", "curl", "htop", "go", "lsof", "i3-wm", "ccache", "ninja", "python-pip", "dconf-editor", "nvidia-settings", "pavucontrol", "moreutils", "clang", "mate-desktop"]
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - install
+        - core
+
+    - name: Install Clang (Debian/Ubuntu)
+      apt:
+        name: ["clang", "clang-11", "clang-12", "clangd", "clangd-10", "clangd-11", "clangd-12"]
+      when: ansible_facts['os_family'] == "Debian"
+      tags:
+        - install
+        - neovim
+        - core
+
+    - name: Install Clang (Arch Linux)
+      pacman:
+        name: ["clang", "clang11", "clang12", "clang-tools-extra"]
+      when: ansible_facts['distribution'] == "Archlinux" or ansible_facts['distribution'] == "ManjaroLinux"
+      tags:
+        - install
+        - neovim
+        - core
+
