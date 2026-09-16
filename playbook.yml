@@ -33,6 +33,7 @@
       - fzf
       - make
       - grim
+      - xclip
       - zoxide
       - slurp
       - wl-clipboard
@@ -57,9 +58,6 @@
       - composer
 
   tasks:
-    # ------------------------------------------------------------------
-    # Base system
-    # ------------------------------------------------------------------
     - name: Update all system packages
       become: true
       ansible.builtin.dnf:
@@ -82,9 +80,6 @@
         state: present
       tags: [base, kitty, grim]
 
-    # ------------------------------------------------------------------
-    # Hyprland (not in official Fedora repos yet on most releases -> COPR)
-    # ------------------------------------------------------------------
     - name: Enable solopasha/hyprland COPR repo
       become: true
       community.general.copr:
@@ -111,9 +106,6 @@
         state: present
       tags: [hyprland]
 
-    # ------------------------------------------------------------------
-    # Zsh + Oh My Zsh
-    # ------------------------------------------------------------------
     - name: Set zsh as the default shell for {{ target_user }}
       become: true
       ansible.builtin.user:
@@ -162,21 +154,11 @@
         backup: true
       tags: [zsh]
 
-    # ------------------------------------------------------------------
-    # Tmux + TPM + resurrect + continuum
-    # ------------------------------------------------------------------
     - name: Clone Tmux Plugin Manager (TPM)
       ansible.builtin.git:
         repo: "https://github.com/tmux-plugins/tpm"
         dest: "{{ user_home }}/.config/tmux/plugins/tpm"
         depth: 1
-      tags: [tmux]
-
-    - name: Deploy base ~/.tmux.conf
-      ansible.builtin.template:
-        src: templates/tmux.conf.j2
-        dest: "{{ user_home }}/.tmux.conf"
-        backup: true
       tags: [tmux]
 
     - name: Install tmux plugins headlessly via TPM
@@ -186,9 +168,6 @@
       changed_when: true
       tags: [tmux]
 
-    # ------------------------------------------------------------------
-    # Kanata (keyboard remapper) - no Fedora package, build via cargo
-    # ------------------------------------------------------------------
     - name: Install kanata via cargo
       ansible.builtin.command: "cargo install kanata --locked"
       args:
@@ -239,24 +218,6 @@
         mode: "0755"
       tags: [kanata]
 
-    - name: Drop a minimal placeholder kanata.kbd (replace with your own config later)
-      ansible.builtin.copy:
-        dest: "{{ user_home }}/.config/kanata/kanata.kbd"
-        force: false
-        content: |
-          ;; Placeholder config - swap this out with your own repo later.
-          (defcfg
-            process-unmapped-keys no
-          )
-          (defsrc
-            caps
-          )
-          (deflayer base
-            esc
-          )
-        mode: "0644"
-      tags: [kanata]
-
     - name: Create a user-level systemd service for kanata
       ansible.builtin.copy:
         dest: "{{ user_home }}/.config/systemd/user/kanata.service"
@@ -284,39 +245,23 @@
       tags: [kanata]
 
     # ------------------------------------------------------------------
-    # Neovim + kickstart.nvim
-    # ------------------------------------------------------------------
-    - name: Check for an existing nvim config
-      ansible.builtin.stat:
-        path: "{{ user_home }}/.config/nvim"
-      register: nvim_config
-      tags: [neovim]
-
-    - name: Check whether that config is already a git repo (e.g. already kickstart)
-      ansible.builtin.stat:
-        path: "{{ user_home }}/.config/nvim/.git"
-      register: nvim_config_git
-      when: nvim_config.stat.exists
-      tags: [neovim]
-
-    - name: Back up existing non-git nvim config before cloning kickstart
-      ansible.builtin.command: >
-        mv {{ user_home }}/.config/nvim {{ user_home }}/.config/nvim.bak.{{ ansible_date_time.iso8601_basic_short }}
-      when:
-        - nvim_config.stat.exists
-        - not nvim_config_git.stat.exists
-      tags: [neovim]
-
-    - name: Clone kickstart.nvim into ~/.config/nvim
-      ansible.builtin.git:
-        repo: "https://github.com/nvim-lua/kickstart.nvim.git"
-        dest: "{{ user_home }}/.config/nvim"
-        depth: 1
-      tags: [neovim]
-
-    # ------------------------------------------------------------------
     # Brave browser
     # ------------------------------------------------------------------
+    - name: Download Brave's official .repo file
+      become: true
+      ansible.builtin.get_url:
+        url: https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+        dest: /etc/yum.repos.d/brave-browser.repo
+        mode: "0644"
+      tags: [brave]
+
+    - name: Import Brave's GPG signing key
+      become: true
+      ansible.builtin.rpm_key:
+        key: https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+        state: present
+      tags: [brave]
+
     - name: Install Brave browser
       become: true
       ansible.builtin.dnf:
@@ -352,7 +297,7 @@
 
     - name: Clone personal dotfiles repo
       ansible.builtin.git:
-        repo: "<your repo url>"
+        repo: "git@github:ziga11/dotfiles"
         dest: "{{ user_home }}/dotfiles"
         depth: 1
 
