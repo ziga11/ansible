@@ -1,0 +1,393 @@
+---
+# Fedora Hyprland dev workstation bootstrap
+#
+# Usage:
+#   ansible-playbook -K playbook.yml
+#   ansible-playbook -K playbook.yml --tags hyprland,kitty
+#   ansible-playbook -K playbook.yml -e target_user=youruser
+#
+# -K prompts for the sudo (become) password.
+# Run this AS your normal user, not as root — it figures out root-only
+# steps on its own via `become`.
+
+- name: Bootstrap Fedora Hyprland dev workstation
+  hosts: workstation
+  become: false
+
+  vars:
+    target_user: "{{ lookup('env', 'USER') }}"
+    user_home: "/home/{{ target_user }}"
+
+    dnf_packages:
+      - kitty
+      - zsh
+      - tmux
+      - git
+      - curl
+      - wget
+      - neovim
+      - ripgrep
+      - fd-find
+      - unzip
+      - gcc
+      - fzf
+      - make
+      - grim
+      - zoxide
+      - slurp
+      - wl-clipboard
+      - dunst
+      - hyprpolkitagent
+      - rust
+      - cargo
+
+    php_packages:
+      - php
+      - php-cli
+      - php-common
+      - php-mbstring
+      - php-xml
+      - php-mysqlnd
+      - php-pgsql
+      - php-zip
+      - php-gd
+      - php-curl
+      - php-bcmath
+      - php-intl
+      - composer
+
+  tasks:
+    # ------------------------------------------------------------------
+    # Base system
+    # ------------------------------------------------------------------
+    - name: Update all system packages
+      become: true
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_cache: true
+      tags: [base]
+
+    - name: Install dnf-plugins-core (needed for config-manager / copr)
+      become: true
+      ansible.builtin.dnf:
+        name: dnf-plugins-core
+        state: present
+      tags: [base]
+
+    - name: Install core CLI + desktop packages
+      become: true
+      ansible.builtin.dnf:
+        name: "{{ dnf_packages }}"
+        state: present
+      tags: [base, kitty, grim]
+
+    # ------------------------------------------------------------------
+    # Hyprland (not in official Fedora repos yet on most releases -> COPR)
+    # ------------------------------------------------------------------
+    - name: Enable solopasha/hyprland COPR repo
+      become: true
+      community.general.copr:
+        name: solopasha/hyprland
+        state: enabled
+      tags: [hyprland]
+
+    - name: Install Hyprland + companions
+      become: true
+      ansible.builtin.dnf:
+        name:
+          - hyprland
+          - xdg-desktop-portal-hyprland
+          - hyprpaper
+          - hyprlock
+          - hypridle
+        state: present
+      tags: [hyprland]
+
+    - name: Ensure hyprland session shows up on the display manager
+      become: true
+      ansible.builtin.dnf:
+        name: xdg-desktop-portal-gtk
+        state: present
+      tags: [hyprland]
+
+    # ------------------------------------------------------------------
+    # Zsh + Oh My Zsh
+    # ------------------------------------------------------------------
+    - name: Set zsh as the default shell for {{ target_user }}
+      become: true
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        shell: /usr/bin/zsh
+      tags: [zsh]
+
+    - name: Check if Oh My Zsh is already installed
+      ansible.builtin.stat:
+        path: "{{ user_home }}/.oh-my-zsh"
+      register: omz_installed
+      tags: [zsh]
+
+    - name: Install Oh My Zsh (unattended)
+      ansible.builtin.shell: >
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+      args:
+        creates: "{{ user_home }}/.oh-my-zsh"
+      environment:
+        RUNZSH: "no"
+        KEEP_ZSHRC: "yes"
+      when: not omz_installed.stat.exists
+      tags: [zsh]
+
+    - name: Clone useful Oh My Zsh community plugins
+      ansible.builtin.git:
+        repo: "{{ item.repo }}"
+        dest: "{{ user_home }}/.oh-my-zsh/custom/plugins/{{ item.name }}"
+        depth: 1
+      loop:
+        - {
+            name: zsh-autosuggestions,
+            repo: "https://github.com/zsh-users/zsh-autosuggestions",
+          }
+        - {
+            name: zsh-syntax-highlighting,
+            repo: "https://github.com/zsh-users/zsh-syntax-highlighting",
+          }
+      tags: [zsh]
+
+    - name: Enable plugins in .zshrc
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.zshrc"
+        regexp: '^plugins=\('
+        line: "plugins=(git zsh-autosuggestions zsh-syntax-highlighting composer laravel)"
+        backup: true
+      tags: [zsh]
+
+    # ------------------------------------------------------------------
+    # Tmux + TPM + resurrect + continuum
+    # ------------------------------------------------------------------
+    - name: Clone Tmux Plugin Manager (TPM)
+      ansible.builtin.git:
+        repo: "https://github.com/tmux-plugins/tpm"
+        dest: "{{ user_home }}/.config/tmux/plugins/tpm"
+        depth: 1
+      tags: [tmux]
+
+    - name: Deploy base ~/.tmux.conf
+      ansible.builtin.template:
+        src: templates/tmux.conf.j2
+        dest: "{{ user_home }}/.tmux.conf"
+        backup: true
+      tags: [tmux]
+
+    - name: Install tmux plugins headlessly via TPM
+      ansible.builtin.shell: "{{ user_home }}/.config/tmux/plugins/tpm/bin/install_plugins"
+      environment:
+        HOME: "{{ user_home }}"
+      changed_when: true
+      tags: [tmux]
+
+    # ------------------------------------------------------------------
+    # Kanata (keyboard remapper) - no Fedora package, build via cargo
+    # ------------------------------------------------------------------
+    - name: Install kanata via cargo
+      ansible.builtin.command: "cargo install kanata --locked"
+      args:
+        creates: "{{ user_home }}/.cargo/bin/kanata"
+      environment:
+        HOME: "{{ user_home }}"
+      tags: [kanata]
+
+    - name: Symlink kanata binary into /usr/local/bin
+      become: true
+      ansible.builtin.file:
+        src: "{{ user_home }}/.cargo/bin/kanata"
+        dest: /usr/local/bin/kanata
+        state: link
+        force: true
+      tags: [kanata]
+
+    - name: Add {{ target_user }} to the input group (uinput access)
+      become: true
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        groups: input
+        append: true
+      tags: [kanata]
+
+    - name: Create udev rule so uinput is writable by the input group
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/udev/rules.d/99-kanata-uinput.rules
+        content: |
+          KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
+        mode: "0644"
+      notify: reload udev
+      tags: [kanata]
+
+    - name: Ensure uinput kernel module loads on boot
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/uinput.conf
+        content: "uinput\n"
+        mode: "0644"
+      tags: [kanata]
+
+    - name: Create ~/.config/kanata directory
+      ansible.builtin.file:
+        path: "{{ user_home }}/.config/kanata"
+        state: directory
+        mode: "0755"
+      tags: [kanata]
+
+    - name: Drop a minimal placeholder kanata.kbd (replace with your own config later)
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.config/kanata/kanata.kbd"
+        force: false
+        content: |
+          ;; Placeholder config - swap this out with your own repo later.
+          (defcfg
+            process-unmapped-keys no
+          )
+          (defsrc
+            caps
+          )
+          (deflayer base
+            esc
+          )
+        mode: "0644"
+      tags: [kanata]
+
+    - name: Create a user-level systemd service for kanata
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.config/systemd/user/kanata.service"
+        content: |
+          [Unit]
+          Description=Kanata keyboard remapper
+          After=graphical-session.target
+
+          [Service]
+          ExecStart=/usr/local/bin/kanata --cfg %h/.config/kanata/kanata.kbd
+          Restart=on-failure
+
+          [Install]
+          WantedBy=default.target
+        mode: "0644"
+      tags: [kanata]
+
+    - name: Note about enabling the kanata service
+      ansible.builtin.debug:
+        msg: >
+          kanata is installed but not auto-started (it needs your real config first).
+          Once you've dropped in your own kanata.kbd, run:
+          systemctl --user daemon-reload && systemctl --user enable --now kanata.service
+          You may need to log out/in once for the new 'input' group membership to apply.
+      tags: [kanata]
+
+    # ------------------------------------------------------------------
+    # Neovim + kickstart.nvim
+    # ------------------------------------------------------------------
+    - name: Check for an existing nvim config
+      ansible.builtin.stat:
+        path: "{{ user_home }}/.config/nvim"
+      register: nvim_config
+      tags: [neovim]
+
+    - name: Check whether that config is already a git repo (e.g. already kickstart)
+      ansible.builtin.stat:
+        path: "{{ user_home }}/.config/nvim/.git"
+      register: nvim_config_git
+      when: nvim_config.stat.exists
+      tags: [neovim]
+
+    - name: Back up existing non-git nvim config before cloning kickstart
+      ansible.builtin.command: >
+        mv {{ user_home }}/.config/nvim {{ user_home }}/.config/nvim.bak.{{ ansible_date_time.iso8601_basic_short }}
+      when:
+        - nvim_config.stat.exists
+        - not nvim_config_git.stat.exists
+      tags: [neovim]
+
+    - name: Clone kickstart.nvim into ~/.config/nvim
+      ansible.builtin.git:
+        repo: "https://github.com/nvim-lua/kickstart.nvim.git"
+        dest: "{{ user_home }}/.config/nvim"
+        depth: 1
+      tags: [neovim]
+
+    # ------------------------------------------------------------------
+    # Brave browser
+    # ------------------------------------------------------------------
+    - name: Install Brave browser
+      become: true
+      ansible.builtin.dnf:
+        name: brave-browser
+        state: present
+      tags: [brave]
+
+    # ------------------------------------------------------------------
+    # PHP & Laravel tooling
+    # ------------------------------------------------------------------
+    - name: Install PHP + extensions + Composer
+      become: true
+      ansible.builtin.dnf:
+        name: "{{ php_packages }}"
+        state: present
+      tags: [php]
+
+    - name: Install the Laravel installer globally via Composer
+      ansible.builtin.command: composer global require laravel/installer
+      environment:
+        HOME: "{{ user_home }}"
+      register: laravel_installer_result
+      changed_when: "'Nothing to install' not in laravel_installer_result.stdout"
+      tags: [php]
+
+    - name: Make sure Composer's global bin dir is on PATH via .zshrc
+      ansible.builtin.lineinfile:
+        path: "{{ user_home }}/.zshrc"
+        line: 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"'
+        insertafter: EOF
+        create: true
+      tags: [php]
+
+    - name: Clone personal dotfiles repo
+      ansible.builtin.git:
+        repo: "<your repo url>"
+        dest: "{{ user_home }}/dotfiles"
+        depth: 1
+
+    - name: Symlink .config subfolders
+      ansible.builtin.file:
+        src: "{{ user_home }}/dotfiles/{{ item }}"
+        dest: "{{ user_home }}/.config/{{ item }}"
+        state: link
+        force: true
+      loop: [hypr, kitty, tmux, nvim, kanata]
+
+    - name: Find script files in dotfiles repo
+      ansible.builtin.find:
+        paths: "{{ user_home }}/dotfiles/scripts"
+        file_type: file
+      register: dotfile_scripts
+
+    - name: Ensure ~/.local/bin exists
+      ansible.builtin.file:
+        path: "{{ user_home }}/.local/bin"
+        state: directory
+        mode: "0755"
+
+    - name: Symlink script files dotfiles
+      ansible.builtin.file:
+        src: "{{ item.path }}"
+        dest: "{{ user_home }}/.local/bin/{{ item.path | basename }}"
+        state: link
+        force: true
+      loop: "{{ dotfile_scripts.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+  handlers:
+    - name: reload udev
+      become: true
+      ansible.builtin.command: udevadm control --reload-rules
+      changed_when: true
